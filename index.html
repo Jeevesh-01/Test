@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pettxo Survey</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #f8fafc;
+            padding: 20px;
+        }
+        .form-container {
+            max-width: 600px;
+            margin: auto;
+            background: #fff;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+        }
+        .question {
+            margin-bottom: 20px;
+        }
+        .question h3 {
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+        button, .option {
+            display: block;
+            margin: 8px 0;
+            padding: 12px;
+            width: 100%;
+            border: none;
+            border-radius: 8px;
+            background: #3B82F6; /* Tailwind's blue-500 */
+            color: white;
+            font-size: 15px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+        button:hover, .option:hover {
+            background: #2563EB; /* Tailwind's blue-600 */
+        }
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            margin-top: 10px;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+            font-size: 15px;
+        }
+        .message-box {
+            background-color: #fefcbf;
+            border: 1px solid #fbd38d;
+            color: #92400e;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="form-container rounded-2xl shadow-xl w-full max-w-2xl">
+        <div id="user-info" class="text-xs text-gray-400 text-right mb-4"></div>
+        <h2 class="text-3xl font-bold text-center text-gray-800 mb-2">🐾 Welcome to Pettxo!</h2>
+        <p class="text-center text-gray-500 mb-6">This 2-minute survey helps us build the future of pet care. Your answers shape Pettxo.</p>
+        <button onclick="startSurvey()" class="w-full mt-4 bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition-colors">Start</button>
+        <div id="formArea"></div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        setLogLevel('debug'); // Enable debug logging for Firebase
+
+        // Global variables provided by the environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let db, auth, userId;
+        let answers = {};
+        
+        // Firebase Initialization
+        try {
+            const app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+
+            onAuthStateChanged(auth, async (user) => {
+                if (user) {
+                    userId = user.uid;
+                    document.getElementById('user-info').textContent = `User ID: ${userId}`;
+                } else {
+                    if (initialAuthToken) {
+                        await signInWithCustomToken(auth, initialAuthToken);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                }
+            });
+        } catch (e) {
+            console.error("Firebase initialization error:", e);
+            document.getElementById('formArea').innerHTML = `<div class="message-box">Failed to initialize Firebase. Please check your configuration.</div>`;
+        }
+
+        const questions = {
+            q1: {
+                text: "Do you currently own a pet?",
+                type: "choice",
+                options: {
+                    "Yes": "q2_owner",
+                    "No, but planning to get one soon": "q2_future",
+                    "No, and not planning to get one": "q2_service"
+                }
+            },
+            q2_owner: {
+                text: "What type(s) of pet do you have?",
+                type: "multi",
+                next: "q3_owner",
+                options: ["Dog", "Cat", "Bird", "Fish", "Rabbit", "Other"]
+            },
+            q3_owner: {
+                text: "What breed(s) is your pet? (optional)",
+                type: "text",
+                next: "q4_owner"
+            },
+            q4_owner: {
+                text: "What’s your pet’s gender?",
+                type: "choice",
+                options: { "Male": "q5_owner", "Female": "q5_owner", "Prefer not to say": "q5_owner" }
+            },
+            q5_owner: {
+                text: "What’s your biggest challenge as a pet parent?",
+                type: "choice",
+                options: {
+                    "Finding reliable services (vet, grooming, walkers)": "general",
+                    "Managing health and vaccinations": "general",
+                    "Connecting with other pet parents": "general",
+                    "Buying trusted products": "general",
+                    "Other": "general"
+                }
+            },
+            q2_future: {
+                text: "When do you plan to get a pet?",
+                type: "choice",
+                options: { "Within 6 months": "q3_future", "6 months to 1 year": "q3_future", "Over 1 year": "q3_future" }
+            },
+            q3_future: {
+                text: "What type of pet are you considering?",
+                type: "multi",
+                next: "q4_future",
+                options: ["Dog", "Cat", "Bird", "Fish", "Rabbit", "Other"]
+            },
+            q4_future: {
+                text: "What are your top concerns about becoming a pet parent?",
+                type: "longtext",
+                next: "general"
+            },
+            q2_service: {
+                text: "What types of pet-related services are you most interested in?",
+                type: "multi",
+                next: "general",
+                options: ["Pet sitting", "Grooming", "Dog walking", "Training", "Veterinary care"]
+            },
+            general: {
+                text: "We are developing a new platform. Please tell us what features would be most valuable to you.",
+                type: "longtext",
+                next: "thankyou"
+            },
+            thankyou: {
+                text: "Thank you for your valuable feedback! Your answers have been saved. We'll use this information to create a better experience for the pet community.",
+                type: "end"
+            }
+        };
+
+        window.startSurvey = function() {
+            document.querySelector('.form-container > button').style.display = 'none';
+            renderQuestion('q1');
+        };
+
+        window.renderQuestion = function(qId) {
+            const formArea = document.getElementById('formArea');
+            const q = questions[qId];
+            if (!q) {
+                formArea.innerHTML = `<div class="message-box">Error: Question not found.</div>`;
+                return;
+            }
+
+            let html = `<div class="question"><h3>${q.text}</h3>`;
+
+            if (q.type === "choice") {
+                for (let opt in q.options) {
+                    html += `<button class="option" onclick="handleAnswer('${qId}','${opt}','${q.options[opt]}')">${opt}</button>`;
+                }
+            } else if (q.type === "multi") {
+                html += q.options.map(o => `<label class="flex items-center space-x-2 py-2 cursor-pointer text-gray-700"><input type="checkbox" value="${o}" class="rounded text-blue-600 focus:ring-blue-500"><span>${o}</span></label>`).join("");
+                html += `<button onclick="submitMulti('${qId}','${q.next}')">Next</button>`;
+            } else if (q.type === "text") {
+                html += `<input type="text" id="input_${qId}" placeholder="Type here..." class="w-full p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-700">`;
+                html += `<button onclick="submitText('${qId}','${q.next || "general"}')">Next</button>`;
+            } else if (q.type === "longtext") {
+                html += `<textarea id="input_${qId}" rows="4" placeholder="Your thoughts..." class="w-full p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-700"></textarea>`;
+                html += `<button onclick="submitText('${qId}','${q.next}')">Submit</button>`;
+            } else if (q.type === "end") {
+                html += `<p class="mt-4 text-sm text-gray-600">${q.text}</p>`;
+                saveSurveyResults();
+            }
+
+            html += `</div>`;
+            formArea.innerHTML = html;
+        };
+
+        window.handleAnswer = function(qId, answer, next) {
+            answers[qId] = answer;
+            renderQuestion(next);
+        };
+
+        window.submitMulti = function(qId, next) {
+            const checkboxes = document.querySelectorAll(`#formArea input[type="checkbox"]:checked`);
+            if (checkboxes.length === 0) {
+                formArea.innerHTML += `<div class="message-box">Please select at least one option.</div>`;
+                return;
+            }
+            const selectedOptions = Array.from(checkboxes).map(cb => cb.value);
+            answers[qId] = selectedOptions;
+            renderQuestion(next);
+        };
+
+        window.submitText = function(qId, next) {
+            const input = document.getElementById(`input_${qId}`).value.trim();
+            if (input === "") {
+                formArea.innerHTML += `<div class="message-box">Please enter your answer.</div>`;
+                return;
+            }
+            answers[qId] = input;
+            renderQuestion(next);
+        };
+
+        async function saveSurveyResults() {
+            const formArea = document.getElementById('formArea');
+            try {
+                if (!db || !userId) {
+                    formArea.innerHTML += `<div class="message-box">User not authenticated. Please wait and try again.</div>`;
+                    return;
+                }
+                
+                const surveyRef = collection(db, 'artifacts', appId, 'users', userId, 'survey_results');
+                await addDoc(surveyRef, {
+                    answers: answers,
+                    timestamp: new Date()
+                });
+
+                const endText = document.querySelector('.question p');
+                if (endText) {
+                    endText.textContent = "Thank you for your valuable feedback! Your answers have been saved successfully.";
+                }
+
+            } catch (e) {
+                console.error("Error writing document to Firebase: ", e);
+                formArea.innerHTML += `<div class="message-box">There was an error saving your responses. Please try again.</div>`;
+            }
+        }
+    </script>
+</body>
+</html>
